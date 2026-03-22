@@ -540,8 +540,8 @@ const keyboardState = {
   backward: false, // S / ArrowDown
   left: false,     // A / ArrowLeft
   right: false,    // D / ArrowRight
-  up: false,      // E
-  down: false      // Q
+  up: false,      // Shift / E
+  down: false      // Ctrl / Q
 };
 
 const MOVE_SPEED = 300; // Units per second
@@ -1278,9 +1278,13 @@ function init() {
         keyboardState.right = true;
         break;
       case 'KeyQ':
+      case 'ControlLeft':
+      case 'ControlRight':
         keyboardState.down = true;
         break;
       case 'KeyE':
+      case 'ShiftLeft':
+      case 'ShiftRight':
         keyboardState.up = true;
         break;
     }
@@ -1305,9 +1309,13 @@ function init() {
         keyboardState.right = false;
         break;
       case 'KeyQ':
+      case 'ControlLeft':
+      case 'ControlRight':
         keyboardState.down = false;
         break;
       case 'KeyE':
+      case 'ShiftLeft':
+      case 'ShiftRight':
         keyboardState.up = false;
         break;
     }
