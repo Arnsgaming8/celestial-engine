@@ -427,27 +427,51 @@ class ChunkManager {
 
     // Maybe generate a galaxy
     if (random() < CONFIG.galaxiesPerChunk) {
-      const galaxyPos = new THREE.Vector3(
-        chunkWorldX + (random() - 0.5) * CONFIG.chunkSize * 0.8,
-        chunkWorldY + (random() - 0.5) * CONFIG.chunkSize * 0.3,
-        chunkWorldZ + (random() - 0.5) * CONFIG.chunkSize * 0.8
-      );
+      let galaxyX = chunkWorldX + (random() - 0.5) * CONFIG.chunkSize * 0.8;
+      let galaxyY = chunkWorldY + (random() - 0.5) * CONFIG.chunkSize * 0.3;
+      let galaxyZ = chunkWorldZ + (random() - 0.5) * CONFIG.chunkSize * 0.8;
+      
+      // Validate galaxy position to prevent NaN errors
+      if (!isFinite(galaxyX) || !isFinite(galaxyY) || !isFinite(galaxyZ) ||
+          isNaN(galaxyX) || isNaN(galaxyY) || isNaN(galaxyZ)) {
+        galaxyX = chunkWorldX;
+        galaxyY = chunkWorldY;
+        galaxyZ = chunkWorldZ;
+      }
+      
+      const galaxyPos = new THREE.Vector3(galaxyX, galaxyY, galaxyZ);
       const type = random() > 0.3 ? 'spiral' : 'elliptical';
-      chunk.galaxy = createGalaxy(type, galaxyPos);
-      scene.add(chunk.galaxy);
-      this.galaxies.push(chunk.galaxy);
+      try {
+        chunk.galaxy = createGalaxy(type, galaxyPos);
+        scene.add(chunk.galaxy);
+        this.galaxies.push(chunk.galaxy);
+      } catch (e) {
+        console.warn('Failed to create galaxy in chunk:', e);
+      }
     }
 
     // Maybe generate a nebula
     if (random() < CONFIG.nebulaePerChunk) {
-      const nebulaPos = new THREE.Vector3(
-        chunkWorldX + (random() - 0.5) * CONFIG.chunkSize * 0.8,
-        chunkWorldY + (random() - 0.5) * CONFIG.chunkSize * 0.3,
-        chunkWorldZ + (random() - 0.5) * CONFIG.chunkSize * 0.8
-      );
-      chunk.nebula = createNebula(nebulaPos);
-      scene.add(chunk.nebula);
-      this.nebulae.push(chunk.nebula);
+      let nebulaX = chunkWorldX + (random() - 0.5) * CONFIG.chunkSize * 0.8;
+      let nebulaY = chunkWorldY + (random() - 0.5) * CONFIG.chunkSize * 0.3;
+      let nebulaZ = chunkWorldZ + (random() - 0.5) * CONFIG.chunkSize * 0.8;
+      
+      // Validate nebula position to prevent NaN errors
+      if (!isFinite(nebulaX) || !isFinite(nebulaY) || !isFinite(nebulaZ) ||
+          isNaN(nebulaX) || isNaN(nebulaY) || isNaN(nebulaZ)) {
+        nebulaX = chunkWorldX;
+        nebulaY = chunkWorldY;
+        nebulaZ = chunkWorldZ;
+      }
+      
+      const nebulaPos = new THREE.Vector3(nebulaX, nebulaY, nebulaZ);
+      try {
+        chunk.nebula = createNebula(nebulaPos);
+        scene.add(chunk.nebula);
+        this.nebulae.push(chunk.nebula);
+      } catch (e) {
+        console.warn('Failed to create nebula in chunk:', e);
+      }
     }
 
     this.chunks.set(`${chunkX},${chunkY},${chunkZ}`, chunk);
@@ -495,9 +519,19 @@ class ChunkManager {
 
     for (let i = 0; i < count; i++) {
       const star = allStars[i];
-      positions[i * 3] = star.x;
-      positions[i * 3 + 1] = star.y;
-      positions[i * 3 + 2] = star.z;
+      
+      // Validate and sanitize position values to prevent NaN errors
+      let x = star.x;
+      let y = star.y;
+      let z = star.z;
+      
+      if (!isFinite(x) || isNaN(x)) x = 0;
+      if (!isFinite(y) || isNaN(y)) y = 0;
+      if (!isFinite(z) || isNaN(z)) z = 0;
+      
+      positions[i * 3] = x;
+      positions[i * 3 + 1] = y;
+      positions[i * 3 + 2] = z;
 
       const colorHex = CONFIG.colors.starColors[star.colorIndex];
       const color = new THREE.Color(colorHex);
@@ -505,11 +539,20 @@ class ChunkManager {
       colors[i * 3 + 1] = color.g;
       colors[i * 3 + 2] = color.b;
 
-      sizes[i] = star.size;
-      brightness[i] = star.brightness;
+      // Validate size and brightness
+      sizes[i] = isFinite(star.size) && !isNaN(star.size) ? star.size : 1;
+      brightness[i] = isFinite(star.brightness) && !isNaN(star.brightness) ? star.brightness : 1;
     }
 
     const geometry = new THREE.BufferGeometry();
+    
+    // Additional validation - check for NaN in all positions before setting attribute
+    for (let i = 0; i < positions.length; i++) {
+      if (isNaN(positions[i]) || !isFinite(positions[i])) {
+        positions[i] = 0;
+      }
+    }
+    
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('customColor', new THREE.BufferAttribute(colors, 3));
     geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
@@ -909,128 +952,221 @@ function createStarField(count) {
 }
 
 function createGalaxy(type = 'spiral', position = new THREE.Vector3()) {
-  const starCount = 5000 + Math.random() * 10000;
-  const positions = new Float32Array(starCount * 3);
-  const colors = new Float32Array(starCount * 3);
-  const sizes = new Float32Array(starCount);
-  const brightness = new Float32Array(starCount);
-  
-  const galaxyColor = new THREE.Color();
-  const hue = Math.random();
-  galaxyColor.setHSL(hue, 0.8, 0.6);
-  
-  const coreColor = new THREE.Color();
-  coreColor.setHSL(hue, 0.9, 0.8);
-  
-  const arms = type === 'spiral' ? Math.floor(Math.random() * 3) + 2 : 1;
-  const armSpread = type === 'spiral' ? 0.5 + Math.random() * 0.5 : 2;
-  const size = 100 + Math.random() * 200;
-  
-  for (let i = 0; i < starCount; i++) {
-    let x, y, z;
-    
-    if (type === 'spiral') {
-      // Spiral galaxy distribution
-      const arm = Math.floor(Math.random() * arms);
-      const armAngle = (arm / arms) * Math.PI * 2;
-      const distance = Math.pow(Math.random(), 0.7) * size;
-      const angle = armAngle + distance / size * Math.PI * armSpread + (Math.random() - 0.5) * 0.5;
-      const spread = Math.random() * size * 0.3;
-      
-      x = Math.cos(angle) * distance + (Math.random() - 0.5) * spread;
-      z = Math.sin(angle) * distance + (Math.random() - 0.5) * spread;
-      y = (Math.random() - 0.5) * spread * 0.3;
-    } else {
-      // Elliptical galaxy
-      const u = Math.random();
-      const v = Math.random();
-      const distance = size * Math.pow(u, 0.5);
-      const angle = 2 * Math.PI * v;
-      
-      x = Math.cos(angle) * distance;
-      z = Math.sin(angle) * distance;
-      y = (Math.random() - 0.5) * distance * 0.5;
+  try {
+    // Validate input position
+    if (!position || isNaN(position.x) || isNaN(position.y) || isNaN(position.z) ||
+        !isFinite(position.x) || !isFinite(position.y) || !isFinite(position.z)) {
+      console.warn('Invalid galaxy position, using default');
+      position = new THREE.Vector3();
     }
     
-    positions[i * 3] = x + position.x;
-    positions[i * 3 + 1] = y + position.y;
-    positions[i * 3 + 2] = z + position.z;
+    const starCount = 5000 + Math.random() * 10000;
+    const positions = new Float32Array(starCount * 3);
+    const colors = new Float32Array(starCount * 3);
+    const sizes = new Float32Array(starCount);
+    const brightness = new Float32Array(starCount);
     
-    // Color based on distance from center
-    const dist = Math.sqrt(x * x + z * z);
-    const color = new THREE.Color().lerpColors(coreColor, galaxyColor, Math.min(dist / size, 1));
+    const galaxyColor = new THREE.Color();
+    const hue = Math.random();
+    galaxyColor.setHSL(hue, 0.8, 0.6);
     
-    colors[i * 3] = color.r;
-    colors[i * 3 + 1] = color.g;
-    colors[i * 3 + 2] = color.b;
+    const coreColor = new THREE.Color();
+    coreColor.setHSL(hue, 0.9, 0.8);
     
-    sizes[i] = Math.random() * 2 + 0.5;
-    brightness[i] = Math.random() * 0.6 + 0.4;
+    const arms = type === 'spiral' ? Math.floor(Math.random() * 3) + 2 : 1;
+    const armSpread = type === 'spiral' ? 0.5 + Math.random() * 0.5 : 2;
+    const size = 100 + Math.random() * 200;
+    
+    for (let i = 0; i < starCount; i++) {
+      let x, y, z;
+      
+      if (type === 'spiral') {
+        // Spiral galaxy distribution
+        const arm = Math.floor(Math.random() * arms);
+        const armAngle = (arm / arms) * Math.PI * 2;
+        const distance = Math.pow(Math.random(), 0.7) * size;
+        const angle = armAngle + distance / size * Math.PI * armSpread + (Math.random() - 0.5) * 0.5;
+        const spread = Math.random() * size * 0.3;
+        
+        x = Math.cos(angle) * distance + (Math.random() - 0.5) * spread;
+        z = Math.sin(angle) * distance + (Math.random() - 0.5) * spread;
+        y = (Math.random() - 0.5) * spread * 0.3;
+      } else {
+        // Elliptical galaxy
+        const u = Math.random();
+        const v = Math.random();
+        const distance = size * Math.pow(u, 0.5);
+        const angle = 2 * Math.PI * v;
+        
+        x = Math.cos(angle) * distance;
+        z = Math.sin(angle) * distance;
+        y = (Math.random() - 0.5) * distance * 0.5;
+      }
+      
+      // Validate computed positions to prevent NaN
+      if (!isFinite(x) || !isFinite(y) || !isFinite(z)) {
+        x = 0; y = 0; z = 0;
+      }
+      
+      positions[i * 3] = x + position.x;
+      positions[i * 3 + 1] = y + position.y;
+      positions[i * 3 + 2] = z + position.z;
+      
+      // Color based on distance from center
+      const dist = Math.sqrt(x * x + z * z);
+      const color = new THREE.Color().lerpColors(coreColor, galaxyColor, Math.min(dist / size, 1));
+      
+      colors[i * 3] = color.r;
+      colors[i * 3 + 1] = color.g;
+      colors[i * 3 + 2] = color.b;
+      
+      sizes[i] = Math.random() * 2 + 0.5;
+      brightness[i] = Math.random() * 0.6 + 0.4;
+    }
+    
+    const geometry = new THREE.BufferGeometry();
+    
+    // Validate all positions before setting attribute
+    for (let i = 0; i < positions.length; i++) {
+      if (isNaN(positions[i]) || !isFinite(positions[i])) {
+        positions[i] = 0; // Safe fallback
+      }
+    }
+    
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('customColor', new THREE.BufferAttribute(colors, 3));
+    geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+    geometry.setAttribute('brightness', new THREE.BufferAttribute(brightness, 1));
+    
+    // Compute bounding sphere with error handling
+    try {
+      geometry.computeBoundingSphere();
+      // Validate bounding sphere radius
+      if (!geometry.boundingSphere || !isFinite(geometry.boundingSphere.radius) || isNaN(geometry.boundingSphere.radius)) {
+        // Set a default bounding sphere if computation fails
+        geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), size * 3);
+      }
+    } catch (e) {
+      console.warn('Bounding sphere computation failed:', e);
+      geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), size * 3);
+    }
+    
+    const material = new THREE.ShaderMaterial({
+      uniforms: {},
+      vertexShader: starVertexShader,
+      fragmentShader: starFragmentShader,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    
+    const galaxy = new THREE.Points(geometry, material);
+    galaxy.userData = {
+      type,
+      name: `Galaxy ${Math.floor(Math.random() * 9999)}`,
+      discovered: false,
+      position: position.clone()
+    };
+    
+    return galaxy;
+  } catch (error) {
+    console.error('Error creating galaxy:', error);
+    // Return a minimal valid galaxy as fallback
+    const fallbackGeometry = new THREE.BufferGeometry();
+    fallbackGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, 0, 0]), 3));
+    fallbackGeometry.setAttribute('customColor', new THREE.BufferAttribute(new Float32Array([1, 1, 1]), 3));
+    fallbackGeometry.setAttribute('size', new Float32Array([1]));
+    fallbackGeometry.setAttribute('brightness', new Float32Array([1]));
+    const fallbackMaterial = new THREE.ShaderMaterial({
+      vertexShader: starVertexShader,
+      fragmentShader: starFragmentShader,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    return new THREE.Points(fallbackGeometry, fallbackMaterial);
   }
-  
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  geometry.setAttribute('customColor', new THREE.BufferAttribute(colors, 3));
-  geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-  geometry.setAttribute('brightness', new THREE.BufferAttribute(brightness, 1));
-  
-  // Compute bounding sphere to prevent NaN radius errors
-  geometry.computeBoundingSphere();
-  
-  const material = new THREE.ShaderMaterial({
-    uniforms: {},
-    vertexShader: starVertexShader,
-    fragmentShader: starFragmentShader,
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false
-  });
-  
-  const galaxy = new THREE.Points(geometry, material);
-  galaxy.userData = {
-    type,
-    name: `Galaxy ${Math.floor(Math.random() * 9999)}`,
-    discovered: false,
-    position: position.clone()
-  };
-  
-  return galaxy;
 }
 
 function createNebula(position = new THREE.Vector3()) {
-  const geometry = new THREE.SphereGeometry(200 + Math.random() * 300, 32, 32);
-  
-  const color1 = new THREE.Color();
-  const hue1 = Math.random();
-  color1.setHSL(hue1, 0.8, 0.5);
-  
-  const color2 = new THREE.Color();
-  const hue2 = (hue1 + 0.3 + Math.random() * 0.4) % 1;
-  color2.setHSL(hue2, 0.8, 0.5);
-  
-  const material = new THREE.ShaderMaterial({
-    uniforms: {
-      time: { value: 0 },
-      color1: { value: color1 },
-      color2: { value: color2 },
-      intensity: { value: 0.7 }
-    },
-    vertexShader: nebulaVertexShader,
-    fragmentShader: nebulaFragmentShader,
-    transparent: true,
-    side: THREE.DoubleSide,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false
-  });
-  
-  const nebula = new THREE.Mesh(geometry, material);
-  nebula.position.copy(position);
-  nebula.userData = {
-    name: `Nebula ${Math.floor(Math.random() * 9999)}`,
-    baseIntensity: 0.7
-  };
-  
-  return nebula;
+  try {
+    // Validate input position
+    if (!position || isNaN(position.x) || isNaN(position.y) || isNaN(position.z) ||
+        !isFinite(position.x) || !isFinite(position.y) || !isFinite(position.z)) {
+      console.warn('Invalid nebula position, using default');
+      position = new THREE.Vector3();
+    }
+    
+    const radius = 200 + Math.random() * 300;
+    
+    // Validate radius
+    if (!isFinite(radius) || isNaN(radius) || radius <= 0) {
+      console.warn('Invalid nebula radius, using default');
+    }
+    
+    let geometry;
+    try {
+      geometry = new THREE.SphereGeometry(
+        isFinite(radius) && !isNaN(radius) && radius > 0 ? radius : 250, 
+        32, 
+        32
+      );
+    } catch (e) {
+      console.warn('SphereGeometry creation failed:', e);
+      geometry = new THREE.SphereGeometry(250, 32, 32);
+    }
+    
+    const color1 = new THREE.Color();
+    const hue1 = isFinite(Math.random()) ? Math.random() : 0.5;
+    color1.setHSL(hue1, 0.8, 0.5);
+    
+    const color2 = new THREE.Color();
+    const hue2 = (hue1 + 0.3 + (isFinite(Math.random()) ? Math.random() : 0.5) * 0.4) % 1;
+    color2.setHSL(hue2, 0.8, 0.5);
+    
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        time: { value: 0 },
+        color1: { value: color1 },
+        color2: { value: color2 },
+        intensity: { value: 0.7 }
+      },
+      vertexShader: nebulaVertexShader,
+      fragmentShader: nebulaFragmentShader,
+      transparent: true,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    
+    const nebula = new THREE.Mesh(geometry, material);
+    nebula.position.copy(position);
+    nebula.userData = {
+      name: `Nebula ${Math.floor(Math.random() * 9999)}`,
+      baseIntensity: 0.7
+    };
+    
+    return nebula;
+  } catch (error) {
+    console.error('Error creating nebula:', error);
+    // Return a minimal valid nebula as fallback
+    const fallbackGeometry = new THREE.SphereGeometry(250, 32, 32);
+    const fallbackMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        time: { value: 0 },
+        color1: { value: new THREE.Color(0xffffff) },
+        color2: { value: new THREE.Color(0xffffff) },
+        intensity: { value: 0.7 }
+      },
+      vertexShader: nebulaVertexShader,
+      fragmentShader: nebulaFragmentShader,
+      transparent: true,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    return new THREE.Mesh(fallbackGeometry, fallbackMaterial);
+  }
 }
 
 // ============================================================================
