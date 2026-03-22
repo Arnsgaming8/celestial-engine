@@ -288,7 +288,13 @@ function mulberry32(seed) {
     let t = seed += 0x6D2B79F5;
     t = Math.imul(t ^ t >>> 15, t | 1);
     t ^= t + Math.imul(t ^ t >>> 7, t | 61);
-    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    let result = ((t ^ t >>> 14) >>> 0) / 4294967296;
+    // Validate result is within bounds - NaN check
+    if (isNaN(result) || !isFinite(result)) {
+      return 0.5; // Safe fallback
+    }
+    // Clamp to valid range
+    return Math.max(0, Math.min(1, result));
   };
 }
 
@@ -454,10 +460,28 @@ class ChunkManager {
       scene.remove(this.starField);
     }
 
-    // Collect all stars
+    // Collect all stars with validation
     const allStars = [];
+    let invalidCount = 0;
     for (const [key, chunk] of this.chunks) {
-      allStars.push(...chunk.stars);
+      for (const star of chunk.stars) {
+        // Validate position values are valid numbers
+        if (isNaN(star.x) || isNaN(star.y) || isNaN(star.z) ||
+            !isFinite(star.x) || !isFinite(star.y) || !isFinite(star.z)) {
+          invalidCount++;
+          continue;
+        }
+        // Validate bounds are reasonable
+        if (Math.abs(star.x) > 100000 || Math.abs(star.y) > 100000 || Math.abs(star.z) > 100000) {
+          invalidCount++;
+          continue;
+        }
+        allStars.push(star);
+      }
+    }
+
+    if (invalidCount > 0) {
+      console.warn(`Filtered ${invalidCount} invalid star positions`);
     }
 
     if (allStars.length === 0) return;
@@ -838,9 +862,18 @@ function createStarField(count) {
     const phi = Math.acos(2 * Math.random() - 1);
     const r = Math.pow(Math.random(), 0.5) * CONFIG.universeRadius;
     
-    positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-    positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-    positions[i * 3 + 2] = r * Math.cos(phi);
+    let x = r * Math.sin(phi) * Math.cos(theta);
+    let y = r * Math.sin(phi) * Math.sin(theta);
+    let z = r * Math.cos(phi);
+    
+    // Validate and clamp positions to prevent NaN
+    if (isNaN(x) || isNaN(y) || isNaN(z) || !isFinite(x) || !isFinite(y) || !isFinite(z)) {
+      x = y = z = 0; // Fallback to center
+    }
+    
+    positions[i * 3] = x;
+    positions[i * 3 + 1] = y;
+    positions[i * 3 + 2] = z;
     
     // Random star color from palette
     const colorHex = colorPalette[Math.floor(Math.random() * colorPalette.length)];
@@ -859,6 +892,9 @@ function createStarField(count) {
   geometry.setAttribute('customColor', new THREE.BufferAttribute(colors, 3));
   geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
   geometry.setAttribute('brightness', new THREE.BufferAttribute(brightness, 1));
+  
+  // Compute bounding sphere to prevent NaN radius errors
+  geometry.computeBoundingSphere();
   
   const material = new THREE.ShaderMaterial({
     uniforms: {},
@@ -937,6 +973,9 @@ function createGalaxy(type = 'spiral', position = new THREE.Vector3()) {
   geometry.setAttribute('customColor', new THREE.BufferAttribute(colors, 3));
   geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
   geometry.setAttribute('brightness', new THREE.BufferAttribute(brightness, 1));
+  
+  // Compute bounding sphere to prevent NaN radius errors
+  geometry.computeBoundingSphere();
   
   const material = new THREE.ShaderMaterial({
     uniforms: {},
