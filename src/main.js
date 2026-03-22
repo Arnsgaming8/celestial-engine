@@ -30,8 +30,8 @@ const CONFIG = {
   universeRadius: 5000,
   // Infinite generation settings
   chunkSize: 1000,        // Size of each chunk in world units
-  renderDistance: 3,       // Number of chunks to render in each direction
-  starsPerChunk: 50,       // Stars per chunk (average)
+  renderDistance: 8,       // Number of chunks to render in each direction
+  starsPerChunk: 200,       // Stars per chunk (average)
   galaxiesPerChunk: 0.02, // Chance of galaxy per chunk
   nebulaePerChunk: 0.015, // Chance of nebula per chunk
   colors: {
@@ -972,8 +972,8 @@ function init() {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000011);
   // Enhanced fog for infinite universe - hides chunk boundaries seamlessly
-  // Density calculated to fade objects around chunk render distance
-  scene.fog = new THREE.FogExp2(0x000011, 0.00035);
+  // Density reduced to allow distant stars to be visible
+  scene.fog = new THREE.FogExp2(0x000011, 0.00015);
   
   updateLoadingProgress(20, 'Initializing camera...');
   
