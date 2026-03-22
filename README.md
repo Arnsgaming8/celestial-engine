@@ -53,8 +53,8 @@ Welcome to **The Celestial Engine** — a breathtaking procedural universe simul
 | **Move Backward** | `S` or `↓` | — |
 | **Strafe Left** | `A` or `←` | — |
 | **Strafe Right** | `D` or `→` | — |
-| **Move Up** | `E` | — |
-| **Move Down** | `Q` | — |
+| **Move Up** | `Space` | — |
+| **Move Down** | `Shift` | — |
 | **Look Around** | — | Click + Drag |
 | **Speed Boost** | `Shift` (while moving) | — |
 | **Slow Down** | `Ctrl` | — |
@@ -239,7 +239,7 @@ the-celestial-engine/
    ```bash
    npm run deploy
    ```
-   
+
    Or manually:
    - Go to Settings → Pages
    - Source: Deploy from a branch
