@@ -53,6 +53,18 @@ let autoRotate = false;
 let debugMode = false;
 let mirrorUniverse = false;
 
+// Keyboard movement state
+const keyboardState = {
+  forward: false,  // W / ArrowUp
+  backward: false, // S / ArrowDown
+  left: false,     // A / ArrowLeft
+  right: false,    // D / ArrowRight
+  up: false,      // E
+  down: false      // Q
+};
+
+const MOVE_SPEED = 300; // Units per second
+
 // Easter eggs state
 const easterEggs = {
   constellationMaker: { unlocked: false, name: 'Constellation Maker', icon: '♈', description: 'Connect stars to create constellations' },
@@ -740,6 +752,61 @@ function init() {
   controls.autoRotate = false;
   controls.autoRotateSpeed = 0.5;
   
+  // Keyboard movement controls
+  document.addEventListener('keydown', (event) => {
+    switch (event.code) {
+      case 'KeyW':
+      case 'ArrowUp':
+        keyboardState.forward = true;
+        break;
+      case 'KeyS':
+      case 'ArrowDown':
+        keyboardState.backward = true;
+        break;
+      case 'KeyA':
+      case 'ArrowLeft':
+        keyboardState.left = true;
+        break;
+      case 'KeyD':
+      case 'ArrowRight':
+        keyboardState.right = true;
+        break;
+      case 'KeyQ':
+        keyboardState.down = true;
+        break;
+      case 'KeyE':
+        keyboardState.up = true;
+        break;
+    }
+  });
+  
+  document.addEventListener('keyup', (event) => {
+    switch (event.code) {
+      case 'KeyW':
+      case 'ArrowUp':
+        keyboardState.forward = false;
+        break;
+      case 'KeyS':
+      case 'ArrowDown':
+        keyboardState.backward = false;
+        break;
+      case 'KeyA':
+      case 'ArrowLeft':
+        keyboardState.left = false;
+        break;
+      case 'KeyD':
+      case 'ArrowRight':
+        keyboardState.right = false;
+        break;
+      case 'KeyQ':
+        keyboardState.down = false;
+        break;
+      case 'KeyE':
+        keyboardState.up = false;
+        break;
+    }
+  });
+  
   updateLoadingProgress(50, 'Generating stars...');
   
   // Create star field
@@ -980,6 +1047,46 @@ function animate() {
   
   // Update controls
   controls.update();
+  
+  // Apply keyboard movement
+  if (keyboardState.forward || keyboardState.backward || keyboardState.left || keyboardState.right || keyboardState.up || keyboardState.down) {
+    const moveDistance = MOVE_SPEED * delta;
+    
+    // Get camera direction vectors
+    const forward = new THREE.Vector3();
+    camera.getWorldDirection(forward);
+    forward.y = 0;
+    forward.normalize();
+    
+    const right = new THREE.Vector3();
+    right.crossVectors(forward, camera.up).normalize();
+    
+    // Apply movement relative to camera direction
+    if (keyboardState.forward) {
+      camera.position.addScaledVector(forward, moveDistance);
+      controls.target.addScaledVector(forward, moveDistance);
+    }
+    if (keyboardState.backward) {
+      camera.position.addScaledVector(forward, -moveDistance);
+      controls.target.addScaledVector(forward, -moveDistance);
+    }
+    if (keyboardState.left) {
+      camera.position.addScaledVector(right, -moveDistance);
+      controls.target.addScaledVector(right, -moveDistance);
+    }
+    if (keyboardState.right) {
+      camera.position.addScaledVector(right, moveDistance);
+      controls.target.addScaledVector(right, moveDistance);
+    }
+    if (keyboardState.up) {
+      camera.position.y += moveDistance;
+      controls.target.y += moveDistance;
+    }
+    if (keyboardState.down) {
+      camera.position.y -= moveDistance;
+      controls.target.y -= moveDistance;
+    }
+  }
   
   // Animate nebulae
   nebulae.forEach(nebula => {
