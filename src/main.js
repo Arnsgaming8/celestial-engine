@@ -9,7 +9,239 @@
  * - Audio-reactive soundscape
  * - Post-processing effects
  * - 8+ Easter eggs
+ * - Mobile/Touch support for iPad and mobile browsers
  */
+
+// ============================================================================
+// MOBILE DEVICE DETECTION
+// ============================================================================
+
+const MOBILE_CONFIG = {
+  isMobile: false,
+  isTablet: false,
+  isTouch: false,
+  pixelRatio: 1,
+  enablePostProcessing: true
+};
+
+// Detect mobile device
+function detectMobileDevice() {
+  const ua = navigator.userAgent.toLowerCase();
+  const isAndroid = ua.includes('android');
+  const isIPhone = ua.includes('iphone') || ua.includes('ipad') || ua.includes('ipod');
+  const isMobile = /mobile|webos|iphone|ipad|ipod|android|blackberry|opera mini|iemobile/i.test(ua);
+  const isTablet = /ipad|tablet|playbook|silk/i.test(ua) || (ua.includes('android') && !ua.includes('mobile'));
+  
+  // Check for touch support
+  const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  
+  MOBILE_CONFIG.isMobile = isMobile || isAndroid || isIPhone;
+  MOBILE_CONFIG.isTablet = isTablet || (isIPhone && navigator.maxTouchPoints > 1);
+  MOBILE_CONFIG.isTouch = isTouch;
+  
+  // Force mobile detection on iPad
+  if (ua.includes('ipad') || (ua.includes('mac') && 'ontouchstart' in window)) {
+    MOBILE_CONFIG.isTablet = true;
+    MOBILE_CONFIG.isMobile = true;
+    MOBILE_CONFIG.isTouch = true;
+  }
+  
+  // Set pixel ratio and post-processing based on device
+  if (MOBILE_CONFIG.isMobile || MOBILE_CONFIG.isTablet) {
+    MOBILE_CONFIG.pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
+    MOBILE_CONFIG.enablePostProcessing = !MOBILE_CONFIG.isMobile; // Disable on phones, enable on tablets
+  }
+  
+  console.log('Device Detection:', {
+    isMobile: MOBILE_CONFIG.isMobile,
+    isTablet: MOBILE_CONFIG.isTablet,
+    isTouch: MOBILE_CONFIG.isTouch,
+    pixelRatio: MOBILE_CONFIG.pixelRatio,
+    enablePostProcessing: MOBILE_CONFIG.enablePostProcessing
+  });
+}
+
+// ============================================================================
+// TOUCH CONTROLS FOR MOBILE/IPAD
+// ============================================================================
+
+class TouchControls {
+  constructor(controls, camera, domElement) {
+    this.controls = controls;
+    this.camera = camera;
+    this.domElement = domElement;
+    
+    // Touch state
+    this.touches = [];
+    this.lastTouchDistance = 0;
+    this.lastTouchCenter = { x: 0, y: 0 };
+    this.isPanning = false;
+    this.isRotating = false;
+    
+    this.setupTouchListeners();
+  }
+  
+  setupTouchListeners() {
+    // Prevent default touch behaviors
+    this.domElement.addEventListener('touchstart', (e) => this.onTouchStart(e), { passive: false });
+    this.domElement.addEventListener('touchmove', (e) => this.onTouchMove(e), { passive: false });
+    this.domElement.addEventListener('touchend', (e) => this.onTouchEnd(e), { passive: false });
+    
+    // Double tap detection for star selection
+    this.lastTapTime = 0;
+    this.lastTapPosition = { x: 0, y: 0 };
+  }
+  
+  onTouchStart(event) {
+    event.preventDefault();
+    this.touches = Array.from(event.touches);
+    
+    // Disable OrbitControls built-in touch when we handle it
+    if (this.touches.length === 1) {
+      this.isRotating = true;
+      this.controls.enableRotate = false; // We handle rotation manually
+      
+      // Detect double tap for star selection
+      const now = Date.now();
+      const touch = this.touches[0];
+      const distance = Math.sqrt(
+        Math.pow(touch.clientX - this.lastTapPosition.x, 2) +
+        Math.pow(touch.clientY - this.lastTapPosition.y, 2)
+      );
+      
+      if (now - this.lastTapTime < 300 && distance < 30) {
+        this.onStarTap(touch.clientX, touch.clientY);
+      }
+      
+      this.lastTapTime = now;
+      this.lastTapPosition = { x: touch.clientX, y: touch.clientY };
+      
+    } else if (this.touches.length === 2) {
+      this.isRotating = false;
+      this.isPanning = true;
+      this.controls.enableRotate = false;
+      this.controls.enablePan = false; // We handle pan manually
+      
+      // Calculate initial distance and center
+      this.lastTouchDistance = this.getTouchDistance();
+      this.lastTouchCenter = this.getTouchCenter();
+    }
+    
+    this.controls.enableZoom = false; // We handle zoom with pinch
+  }
+  
+  onTouchMove(event) {
+    event.preventDefault();
+    this.touches = Array.from(event.touches);
+    
+    if (this.touches.length === 1 && this.isRotating) {
+      // Single finger drag = rotate (orbit)
+      const touch = this.touches[0];
+      const deltaX = touch.clientX - this.lastTouchCenter.x;
+      const deltaY = touch.clientY - this.lastTouchCenter.y;
+      
+      // Rotate camera around target
+      const rotateSpeed = 0.005;
+      this.controls.rotateLeft(deltaX * rotateSpeed);
+      this.controls.rotateUp(deltaY * rotateSpeed);
+      
+      this.lastTouchCenter = { x: touch.clientX, y: touch.clientY };
+      
+    } else if (this.touches.length === 2) {
+      // Two finger drag = pan
+      if (this.isPanning) {
+        const currentCenter = this.getTouchCenter();
+        const deltaX = currentCenter.x - this.lastTouchCenter.x;
+        const deltaY = currentCenter.y - this.lastTouchCenter.y;
+        
+        const panSpeed = 0.5;
+        this.controls.pan(deltaX * panSpeed, deltaY * panSpeed);
+        
+        this.lastTouchCenter = currentCenter;
+      }
+      
+      // Pinch = zoom
+      const currentDistance = this.getTouchDistance();
+      const delta = this.lastTouchDistance - currentDistance;
+      
+      if (Math.abs(delta) > 5) {
+        const zoomSpeed = delta * 0.1;
+        this.camera.position.addScaledVector(this.camera.getWorldDirection(new THREE.Vector3()), zoomSpeed);
+        this.lastTouchDistance = currentDistance;
+      }
+    }
+  }
+  
+  onTouchEnd(event) {
+    this.touches = Array.from(event.touches);
+    
+    if (this.touches.length === 0) {
+      // Reset all controls
+      this.isRotating = false;
+      this.isPanning = false;
+      this.controls.enableRotate = true;
+      this.controls.enablePan = true;
+      this.controls.enableZoom = true;
+      this.lastTouchCenter = { x: 0, y: 0 };
+    } else if (this.touches.length === 1) {
+      // Back to single finger rotate
+      this.isPanning = false;
+      this.isRotating = true;
+      this.lastTouchCenter = { x: this.touches[0].clientX, y: this.touches[0].clientY };
+    }
+  }
+  
+  getTouchDistance() {
+    if (this.touches.length < 2) return 0;
+    const dx = this.touches[0].clientX - this.touches[1].clientX;
+    const dy = this.touches[0].clientY - this.touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+  
+  getTouchCenter() {
+    if (this.touches.length < 2) {
+      return this.touches.length === 1 
+        ? { x: this.touches[0].clientX, y: this.touches[0].clientY } 
+        : { x: 0, y: 0 };
+    }
+    return {
+      x: (this.touches[0].clientX + this.touches[1].clientX) / 2,
+      y: (this.touches[0].clientY + this.touches[1].clientY) / 2
+    };
+  }
+  
+  onStarTap(x, y) {
+    // Trigger star click for selection
+    const mouse = new THREE.Vector2();
+    mouse.x = (x / window.innerWidth) * 2 - 1;
+    mouse.y = -(y / window.innerHeight) * 2 + 1;
+    
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(mouse, this.camera);
+    
+    if (starField) {
+      const intersects = raycaster.intersectObject(starField);
+      
+      if (intersects.length > 0) {
+        const index = intersects[0].index;
+        const positions = starField.geometry.attributes.position.array;
+        const colors = starField.geometry.attributes.customColor.array;
+        
+        const color = new THREE.Color(colors[index * 3], colors[index * 3 + 1], colors[index * 3 + 2]);
+        const posX = positions[index * 3].toFixed(2);
+        const posY = positions[index * 3 + 1].toFixed(2);
+        const posZ = positions[index * 3 + 2].toFixed(2);
+        
+        showNotification(`Star #${index} | Color: #${color.getHexString()} | Pos: (${posX}, ${posY}, ${posZ})`, 'info');
+        
+        // Play note if sound hunter is active
+        if (window.soundHunterActive && audioEngine) {
+          audioEngine.playStarNote(index, CONFIG.starCount);
+        }
+      }
+    }
+  }
+}
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -30,8 +262,8 @@ const CONFIG = {
   universeRadius: 5000,
   // Infinite generation settings
   chunkSize: 1000,        // Size of each chunk in world units
-  renderDistance: 5,       // Number of chunks to render in each direction (reduced for performance)
-  starsPerChunk: 100,       // Stars per chunk (balanced for performance - still looks crowded)
+  renderDistance: MOBILE_CONFIG.isMobile ? 3 : 5,       // Number of chunks to render in each direction (reduced for mobile)
+  starsPerChunk: MOBILE_CONFIG.isMobile ? 45 : 100,       // Stars per chunk (reduced for mobile: 40-50)
   galaxiesPerChunk: 0.02, // Chance of galaxy per chunk
   nebulaePerChunk: 0.015, // Chance of nebula per chunk
   colors: {
@@ -966,30 +1198,44 @@ function updateEasterEggPanel() {
 // ============================================================================
 
 function init() {
+  // Detect mobile device first
+  detectMobileDevice();
+  
   updateLoadingProgress(10, 'Creating universe...');
   
   // Scene setup
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000011);
   // Enhanced fog for infinite universe - hides chunk boundaries seamlessly
-  // Density reduced to allow distant stars to be visible
-  scene.fog = new THREE.FogExp2(0x000011, 0.00015);
+  // Use heavier fog on mobile to reduce draw distance appearance
+  const fogDensity = MOBILE_CONFIG.isMobile ? 0.00025 : 0.00015;
+  scene.fog = new THREE.FogExp2(0x000011, fogDensity);
   
   updateLoadingProgress(20, 'Initializing camera...');
   
-  // Camera
-  camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 10000);
+  // Camera - adjust FOV for mobile
+  const fov = MOBILE_CONFIG.isMobile ? 85 : 75;
+  camera = new THREE.PerspectiveCamera(fov, window.innerWidth / window.innerHeight, 0.1, 10000);
   camera.position.set(0, 200, 500);
   
   updateLoadingProgress(30, 'Setting up renderer...');
   
-  // Renderer
+  // Renderer - mobile optimized
   renderer = new THREE.WebGLRenderer({ 
-    antialias: true,
-    powerPreference: 'high-performance'
+    antialias: !MOBILE_CONFIG.isMobile, // Disable antialias on mobile
+    powerPreference: MOBILE_CONFIG.isMobile ? 'low-performance' : 'high-performance',
+    alpha: false
   });
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  
+  // Use reduced pixel ratio on mobile for performance
+  renderer.setPixelRatio(MOBILE_CONFIG.pixelRatio);
+  
+  // Handle high refresh rate displays on mobile
+  if (MOBILE_CONFIG.isMobile) {
+    renderer.setAnimationLoop(null);
+  }
+  
   document.getElementById('canvas-container').appendChild(renderer.domElement);
   
   updateLoadingProgress(40, 'Adding controls...');
@@ -998,10 +1244,19 @@ function init() {
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.05;
-  controls.minDistance = 50;
-  controls.maxDistance = 3000;
+  controls.minDistance = MOBILE_CONFIG.isMobile ? 20 : 50;
+  controls.maxDistance = MOBILE_CONFIG.isMobile ? 1500 : 3000;
   controls.autoRotate = false;
   controls.autoRotateSpeed = 0.5;
+  
+  // Adjust controls for touch devices
+  if (MOBILE_CONFIG.isTouch) {
+    controls.rotateSpeed = 0.5;
+    controls.panSpeed = 0.8;
+    controls.zoomSpeed = 1.2;
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.1;
+  }
   
   // Keyboard movement controls
   document.addEventListener('keydown', (event) => {
@@ -1100,26 +1355,33 @@ function init() {
   
   updateLoadingProgress(80, 'Applying effects...');
   
-  // Post-processing
+  // Post-processing (reduce or disable on mobile)
   composer = new EffectComposer(renderer);
   
   const renderPass = new RenderPass(scene, camera);
   composer.addPass(renderPass);
   
+  // Only enable bloom on desktop or tablets, not on mobile phones
+  const bloomStrength = MOBILE_CONFIG.isMobile ? 0.3 : 0.8;
+  const bloomThreshold = MOBILE_CONFIG.isMobile ? 0.9 : 0.85;
+  
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
-    0.8,  // strength
+    bloomStrength,  // strength - reduced on mobile
     0.4,  // radius
-    0.85  // threshold
+    bloomThreshold  // threshold
   );
   composer.addPass(bloomPass);
   
-  const chromaticPass = new ShaderPass(chromaticAberrationShader);
-  composer.addPass(chromaticPass);
+  // Disable chromatic aberration on mobile for performance
+  if (!MOBILE_CONFIG.isMobile) {
+    const chromaticPass = new ShaderPass(chromaticAberrationShader);
+    composer.addPass(chromaticPass);
+    window.chromaticPass = chromaticPass;
+  }
   
   // Store passes for later access
   window.bloomPass = bloomPass;
-  window.chromaticPass = chromaticPass;
   
   updateLoadingProgress(90, 'Initializing audio...');
   
@@ -1138,6 +1400,11 @@ function init() {
   
   // Start animation
   animate();
+  
+  // Initialize touch controls if on touch device
+  if (MOBILE_CONFIG.isTouch) {
+    window.touchControls = new TouchControls(controls, camera, renderer.domElement);
+  }
 }
 
 function updateLoadingProgress(percent, text) {
@@ -1146,12 +1413,37 @@ function updateLoadingProgress(percent, text) {
 }
 
 function setupEventListeners() {
-  // Window resize
+  // Window resize - also handle orientation change on mobile
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
-    composer.setSize(window.innerWidth, window.innerHeight);
+    
+    // Update composer size
+    if (composer) {
+      composer.setSize(window.innerWidth, window.innerHeight);
+    }
+    
+    // Adjust for orientation change
+    if (window.orientation && Math.abs(window.orientation) === 90) {
+      // Landscape mode - show notification
+      document.body.classList.add('landscape');
+    } else {
+      document.body.classList.remove('landscape');
+    }
+  });
+  
+  // Handle orientation change specifically
+  window.addEventListener('orientationchange', () => {
+    setTimeout(() => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      
+      if (composer) {
+        composer.setSize(window.innerWidth, window.innerHeight);
+      }
+    }, 100);
   });
   
   // Keyboard events for Konami code

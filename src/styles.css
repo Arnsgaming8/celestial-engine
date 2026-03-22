@@ -514,3 +514,188 @@ input[type="range"]::-webkit-slider-thumb:hover {
     display: none;
   }
 }
+
+/* ============================================================================
+   MOBILE/TOUCH OPTIMIZATIONS
+   ============================================================================ */
+
+/* Touch device optimizations */
+@media (pointer: coarse) {
+  /* Larger touch targets for all interactive elements */
+  .btn {
+    min-height: 48px;
+    padding: 14px 20px;
+    font-size: 0.85rem;
+  }
+  
+  .panel-toggle {
+    width: 48px;
+    height: 48px;
+  }
+  
+  .audio-toggle {
+    width: 60px;
+    height: 60px;
+    font-size: 1.5rem;
+  }
+  
+  /* Sliders - larger thumb for touch */
+  input[type="range"]::-webkit-slider-thumb {
+    width: 24px;
+    height: 24px;
+  }
+  
+  input[type="range"] {
+    height: 8px;
+  }
+  
+  /* Easter egg items - larger for touch */
+  .easter-item {
+    min-height: 56px;
+    padding: 14px;
+  }
+  
+  .easter-icon {
+    font-size: 1.5rem;
+  }
+}
+
+/* Mobile phone adjustments */
+@media (max-width: 480px) {
+  .header {
+    top: 10px;
+  }
+  
+  .title {
+    font-size: 1rem;
+    letter-spacing: 0.2em;
+  }
+  
+  .subtitle {
+    font-size: 0.6rem;
+    display: none; /* Hide subtitle on small screens */
+  }
+  
+  .control-panel {
+    width: calc(100% - 20px);
+    max-width: 300px;
+    left: 10px;
+    top: 80px;
+    padding: 15px;
+  }
+  
+  /* Hide complex controls on very small screens */
+  .panel-section:not(:first-child) {
+    display: none; /* Show only first section on mobile */
+  }
+  
+  .easter-egg-panel {
+    width: calc(100% - 20px);
+    max-width: 320px;
+    left: 10px;
+    right: 10px;
+  }
+  
+  .help-panel {
+    display: none;
+  }
+  
+  .audio-toggle {
+    bottom: 15px;
+    left: 15px;
+    width: 56px;
+    height: 56px;
+  }
+}
+
+/* Tablet/iPad adjustments */
+@media (min-width: 768px) and (max-width: 1024px) {
+  .control-panel {
+    width: 260px;
+    left: 15px;
+  }
+  
+  .title {
+    font-size: 1.5rem;
+  }
+  
+  .btn {
+    padding: 12px 18px;
+  }
+}
+
+/* Landscape orientation on mobile */
+@media (max-height: 500px) and (orientation: landscape) {
+  .header {
+    top: 5px;
+  }
+  
+  .title {
+    font-size: 1rem;
+  }
+  
+  .control-panel {
+    top: 60px;
+    padding: 10px;
+    width: 220px;
+  }
+  
+  .panel-section {
+    margin-bottom: 10px;
+  }
+  
+  .help-panel {
+    display: none;
+  }
+  
+  .audio-toggle {
+    width: 44px;
+    height: 44px;
+    bottom: 10px;
+  }
+}
+
+/* Prevent text selection on UI elements during touch */
+@media (pointer: coarse) {
+  .btn,
+  .control-panel,
+  .easter-egg-panel,
+  .panel-toggle,
+  .audio-toggle,
+  .help-panel {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  
+  /* Disable tap highlight */
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* Smooth animations optimized for mobile */
+@media (pointer: coarse) {
+  .control-panel,
+  .easter-egg-panel {
+    transition: transform 0.2s ease, opacity 0.2s ease;
+  }
+}
+
+/* High DPI displays */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  /* Ensure text remains crisp */
+  .title,
+  .section-title {
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* Hide scrollbars but keep functionality */
+@media (pointer: coarse) {
+  ::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+}
