@@ -415,13 +415,26 @@ class ChunkManager {
     // Generate stars for this chunk
     const starCount = Math.floor(CONFIG.starsPerChunk + random() * CONFIG.starsPerChunk);
     for (let i = 0; i < starCount; i++) {
+      const starX = chunkWorldX + (random() - 0.5) * CONFIG.chunkSize;
+      const starY = chunkWorldY + (random() - 0.5) * CONFIG.chunkSize;
+      const starZ = chunkWorldZ + (random() - 0.5) * CONFIG.chunkSize;
+      
+      // Validate star positions to prevent NaN in BufferGeometry
+      const validX = isFinite(starX) && !isNaN(starX) ? starX : chunkWorldX;
+      const validY = isFinite(starY) && !isNaN(starY) ? starY : chunkWorldY;
+      const validZ = isFinite(starZ) && !isNaN(starZ) ? starZ : chunkWorldZ;
+      
+      const starSize = random() * 3 + 1;
+      const starBrightness = random() * 0.7 + 0.3;
+      
+      // Validate size and brightness
       chunk.stars.push({
-        x: chunkWorldX + (random() - 0.5) * CONFIG.chunkSize,
-        y: chunkWorldY + (random() - 0.5) * CONFIG.chunkSize,
-        z: chunkWorldZ + (random() - 0.5) * CONFIG.chunkSize,
+        x: validX,
+        y: validY,
+        z: validZ,
         colorIndex: Math.floor(random() * CONFIG.colors.starColors.length),
-        size: random() * 3 + 1,
-        brightness: random() * 0.7 + 0.3
+        size: isFinite(starSize) && !isNaN(starSize) ? starSize : 1,
+        brightness: isFinite(starBrightness) && !isNaN(starBrightness) ? starBrightness : 1
       });
     }
 
@@ -548,7 +561,8 @@ class ChunkManager {
     
     // Additional validation - check for NaN in all positions before setting attribute
     for (let i = 0; i < positions.length; i++) {
-      if (isNaN(positions[i]) || !isFinite(positions[i])) {
+      if (!isFinite(positions[i]) || isNaN(positions[i])) {
+        console.warn(`Invalid position at index ${i}, setting to 0`);
         positions[i] = 0;
       }
     }
@@ -557,6 +571,19 @@ class ChunkManager {
     geometry.setAttribute('customColor', new THREE.BufferAttribute(colors, 3));
     geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
     geometry.setAttribute('brightness', new THREE.BufferAttribute(brightness, 1));
+
+    // Compute bounding sphere with error handling to prevent NaN radius
+    try {
+      geometry.computeBoundingSphere();
+      // Validate bounding sphere radius
+      if (!geometry.boundingSphere || !isFinite(geometry.boundingSphere.radius) || isNaN(geometry.boundingSphere.radius)) {
+        console.warn('Invalid bounding sphere in updateStarField, creating fallback');
+        geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1000);
+      }
+    } catch (e) {
+      console.warn('Bounding sphere computation failed in updateStarField:', e);
+      geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1000);
+    }
 
     const material = new THREE.ShaderMaterial({
       uniforms: {},
@@ -930,6 +957,14 @@ function createStarField(count) {
     brightness[i] = Math.random() * 0.7 + 0.3;
   }
   
+  // Validate ALL positions before computing bounding sphere
+  for (let i = 0; i < positions.length; i++) {
+    if (!isFinite(positions[i]) || isNaN(positions[i])) {
+      console.warn(`Invalid position at index ${i}, setting to 0`);
+      positions[i] = 0;
+    }
+  }
+  
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geometry.setAttribute('customColor', new THREE.BufferAttribute(colors, 3));
@@ -937,7 +972,17 @@ function createStarField(count) {
   geometry.setAttribute('brightness', new THREE.BufferAttribute(brightness, 1));
   
   // Compute bounding sphere to prevent NaN radius errors
-  geometry.computeBoundingSphere();
+  try {
+    geometry.computeBoundingSphere();
+    // Validate bounding sphere radius
+    if (!geometry.boundingSphere || !isFinite(geometry.boundingSphere.radius) || isNaN(geometry.boundingSphere.radius)) {
+      console.warn('Invalid bounding sphere, creating fallback');
+      geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1000);
+    }
+  } catch (e) {
+    console.warn('Bounding sphere computation failed:', e);
+    geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1000);
+  }
   
   const material = new THREE.ShaderMaterial({
     uniforms: {},
