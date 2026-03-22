@@ -30,8 +30,8 @@ const CONFIG = {
   universeRadius: 5000,
   // Infinite generation settings
   chunkSize: 1000,        // Size of each chunk in world units
-  renderDistance: 8,       // Number of chunks to render in each direction
-  starsPerChunk: 200,       // Stars per chunk (average)
+  renderDistance: 5,       // Number of chunks to render in each direction (reduced for performance)
+  starsPerChunk: 100,       // Stars per chunk (balanced for performance - still looks crowded)
   galaxiesPerChunk: 0.02, // Chance of galaxy per chunk
   nebulaePerChunk: 0.015, // Chance of nebula per chunk
   colors: {
