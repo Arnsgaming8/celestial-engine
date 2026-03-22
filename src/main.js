@@ -28,6 +28,12 @@ const CONFIG = {
   galaxyCount: 8,
   nebulaCount: 12,
   universeRadius: 5000,
+  // Infinite generation settings
+  chunkSize: 1000,        // Size of each chunk in world units
+  renderDistance: 3,       // Number of chunks to render in each direction
+  starsPerChunk: 50,       // Stars per chunk (average)
+  galaxiesPerChunk: 0.02, // Chance of galaxy per chunk
+  nebulaePerChunk: 0.015, // Chance of nebula per chunk
   colors: {
     primary: 0x00d4ff,
     secondary: 0xff00aa,
@@ -41,12 +47,255 @@ const CONFIG = {
 };
 
 // ============================================================================
+// CHUNK SYSTEM FOR INFINITE UNIVERSE
+// ============================================================================
+
+// Seeded random number generator (Mulberry32)
+function mulberry32(seed) {
+  return function() {
+    let t = seed += 0x6D2B79F5;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+// Generate a deterministic seed from chunk coordinates
+function getChunkSeed(chunkX, chunkY, chunkZ) {
+  // Use a combination of chunk coordinates to create unique seed
+  const hash = chunkX * 73856093 ^ chunkY * 19349663 ^ chunkZ * 83492791;
+  return Math.abs(hash);
+}
+
+// Chunk management system
+class ChunkManager {
+  constructor() {
+    this.chunks = new Map(); // Map of "x,y,z" -> chunk data
+    this.starField = null;
+    this.galaxies = [];
+    this.nebulae = [];
+    this.lastPlayerChunk = null;
+    this.needsUpdate = true;
+  }
+
+  // Get chunk key from coordinates
+  getChunkKey(x, y, z) {
+    const chunkX = Math.floor(x / CONFIG.chunkSize);
+    const chunkY = Math.floor(y / CONFIG.chunkSize);
+    const chunkZ = Math.floor(z / CONFIG.chunkSize);
+    return `${chunkX},${chunkY},${chunkZ}`;
+  }
+
+  // Get chunk coordinates from world position
+  getChunkCoords(x, y, z) {
+    return {
+      x: Math.floor(x / CONFIG.chunkSize),
+      y: Math.floor(y / CONFIG.chunkSize),
+      z: Math.floor(z / CONFIG.chunkSize)
+    };
+  }
+
+  // Update chunks based on player position
+  update(playerPosition) {
+    const playerChunk = this.getChunkCoords(
+      playerPosition.x,
+      playerPosition.y,
+      playerPosition.z
+    );
+
+    // Only update if player moved to a new chunk
+    if (this.lastPlayerChunk &&
+        this.lastPlayerChunk.x === playerChunk.x &&
+        this.lastPlayerChunk.y === playerChunk.y &&
+        this.lastPlayerChunk.z === playerChunk.z) {
+      return;
+    }
+
+    this.lastPlayerChunk = playerChunk;
+    this.needsUpdate = true;
+
+    // Determine which chunks should be loaded
+    const neededChunks = new Set();
+    for (let x = -CONFIG.renderDistance; x <= CONFIG.renderDistance; x++) {
+      for (let y = -CONFIG.renderDistance; y <= CONFIG.renderDistance; y++) {
+        for (let z = -CONFIG.renderDistance; z <= CONFIG.renderDistance; z++) {
+          const key = `${playerChunk.x + x},${playerChunk.y + y},${playerChunk.z + z}`;
+          neededChunks.add(key);
+        }
+      }
+    }
+
+    // Remove chunks that are too far
+    for (const [key, chunk] of this.chunks) {
+      if (!neededChunks.has(key)) {
+        // Remove from scene
+        if (chunk.galaxy) {
+          scene.remove(chunk.galaxy);
+          const idx = this.galaxies.indexOf(chunk.galaxy);
+          if (idx > -1) this.galaxies.splice(idx, 1);
+        }
+        if (chunk.nebula) {
+          scene.remove(chunk.nebula);
+          const idx = this.nebulae.indexOf(chunk.nebula);
+          if (idx > -1) this.nebulae.splice(idx, 1);
+        }
+        this.chunks.delete(key);
+      }
+    }
+
+    // Generate needed chunks
+    for (const key of neededChunks) {
+      if (!this.chunks.has(key)) {
+        const [cx, cy, cz] = key.split(',').map(Number);
+        this.generateChunk(cx, cy, cz);
+      }
+    }
+
+    // Update star field positions
+    this.updateStarField();
+  }
+
+  // Generate a single chunk
+  generateChunk(chunkX, chunkY, chunkZ) {
+    const seed = getChunkSeed(chunkX, chunkY, chunkZ);
+    const random = mulberry32(seed);
+
+    const chunk = {
+      x: chunkX,
+      y: chunkY,
+      z: chunkZ,
+      stars: [],
+      galaxy: null,
+      nebula: null
+    };
+
+    // Calculate chunk world position (center of chunk)
+    const chunkWorldX = chunkX * CONFIG.chunkSize;
+    const chunkWorldY = chunkY * CONFIG.chunkSize;
+    const chunkWorldZ = chunkZ * CONFIG.chunkSize;
+
+    // Generate stars for this chunk
+    const starCount = Math.floor(CONFIG.starsPerChunk + random() * CONFIG.starsPerChunk);
+    for (let i = 0; i < starCount; i++) {
+      chunk.stars.push({
+        x: chunkWorldX + (random() - 0.5) * CONFIG.chunkSize,
+        y: chunkWorldY + (random() - 0.5) * CONFIG.chunkSize,
+        z: chunkWorldZ + (random() - 0.5) * CONFIG.chunkSize,
+        colorIndex: Math.floor(random() * CONFIG.colors.starColors.length),
+        size: random() * 3 + 1,
+        brightness: random() * 0.7 + 0.3
+      });
+    }
+
+    // Maybe generate a galaxy
+    if (random() < CONFIG.galaxiesPerChunk) {
+      const galaxyPos = new THREE.Vector3(
+        chunkWorldX + (random() - 0.5) * CONFIG.chunkSize * 0.8,
+        chunkWorldY + (random() - 0.5) * CONFIG.chunkSize * 0.3,
+        chunkWorldZ + (random() - 0.5) * CONFIG.chunkSize * 0.8
+      );
+      const type = random() > 0.3 ? 'spiral' : 'elliptical';
+      chunk.galaxy = createGalaxy(type, galaxyPos);
+      scene.add(chunk.galaxy);
+      this.galaxies.push(chunk.galaxy);
+    }
+
+    // Maybe generate a nebula
+    if (random() < CONFIG.nebulaePerChunk) {
+      const nebulaPos = new THREE.Vector3(
+        chunkWorldX + (random() - 0.5) * CONFIG.chunkSize * 0.8,
+        chunkWorldY + (random() - 0.5) * CONFIG.chunkSize * 0.3,
+        chunkWorldZ + (random() - 0.5) * CONFIG.chunkSize * 0.8
+      );
+      chunk.nebula = createNebula(nebulaPos);
+      scene.add(chunk.nebula);
+      this.nebulae.push(chunk.nebula);
+    }
+
+    this.chunks.set(`${chunkX},${chunkY},${chunkZ}`, chunk);
+  }
+
+  // Collect all stars from all chunks and create star field
+  updateStarField() {
+    // Remove old star field
+    if (this.starField) {
+      scene.remove(this.starField);
+    }
+
+    // Collect all stars
+    const allStars = [];
+    for (const [key, chunk] of this.chunks) {
+      allStars.push(...chunk.stars);
+    }
+
+    if (allStars.length === 0) return;
+
+    // Create new star field
+    const count = allStars.length;
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    const sizes = new Float32Array(count);
+    const brightness = new Float32Array(count);
+
+    for (let i = 0; i < count; i++) {
+      const star = allStars[i];
+      positions[i * 3] = star.x;
+      positions[i * 3 + 1] = star.y;
+      positions[i * 3 + 2] = star.z;
+
+      const colorHex = CONFIG.colors.starColors[star.colorIndex];
+      const color = new THREE.Color(colorHex);
+      colors[i * 3] = color.r;
+      colors[i * 3 + 1] = color.g;
+      colors[i * 3 + 2] = color.b;
+
+      sizes[i] = star.size;
+      brightness[i] = star.brightness;
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('customColor', new THREE.BufferAttribute(colors, 3));
+    geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+    geometry.setAttribute('brightness', new THREE.BufferAttribute(brightness, 1));
+
+    const material = new THREE.ShaderMaterial({
+      uniforms: {},
+      vertexShader: starVertexShader,
+      fragmentShader: starFragmentShader,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+
+    this.starField = new THREE.Points(geometry, material);
+    scene.add(this.starField);
+  }
+
+  // Get all galaxies for animation
+  getGalaxies() {
+    return this.galaxies;
+  }
+
+  // Get all nebulae for animation
+  getNebulae() {
+    return this.nebulae;
+  }
+
+  // Get star field for interaction
+  getStarField() {
+    return this.starField;
+  }
+}
+
+// ============================================================================
 // GLOBAL STATE
 // ============================================================================
 
 let scene, camera, renderer, composer, controls;
 let starField, galaxies = [], nebulae = [];
 let clock = new THREE.Clock();
+let chunkManager = null;
 let audioEngine = null;
 let timeMultiplier = 1;
 let autoRotate = false;
@@ -722,7 +971,9 @@ function init() {
   // Scene setup
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000011);
-  scene.fog = new THREE.FogExp2(0x000011, 0.0001);
+  // Enhanced fog for infinite universe - hides chunk boundaries seamlessly
+  // Density calculated to fade objects around chunk render distance
+  scene.fog = new THREE.FogExp2(0x000011, 0.00035);
   
   updateLoadingProgress(20, 'Initializing camera...');
   
@@ -807,41 +1058,45 @@ function init() {
     }
   });
   
-  updateLoadingProgress(50, 'Generating stars...');
+  updateLoadingProgress(50, 'Initializing infinite universe...');
   
-  // Create star field
-  starField = createStarField(CONFIG.starCount);
-  scene.add(starField);
-  document.getElementById('star-count').textContent = CONFIG.starCount.toLocaleString();
+  // Initialize chunk-based infinite universe system
+  chunkManager = new ChunkManager();
   
-  updateLoadingProgress(60, 'Creating galaxies...');
+  // Generate initial chunks around player position
+  const initialChunkCoords = chunkManager.getChunkCoords(
+    camera.position.x,
+    camera.position.y,
+    camera.position.z
+  );
   
-  // Create galaxies
-  for (let i = 0; i < CONFIG.galaxyCount; i++) {
-    const position = new THREE.Vector3(
-      (Math.random() - 0.5) * CONFIG.universeRadius * 0.8,
-      (Math.random() - 0.5) * CONFIG.universeRadius * 0.2,
-      (Math.random() - 0.5) * CONFIG.universeRadius * 0.8
-    );
-    const type = Math.random() > 0.3 ? 'spiral' : 'elliptical';
-    const galaxy = createGalaxy(type, position);
-    scene.add(galaxy);
-    galaxies.push(galaxy);
+  // Generate chunks in a 3x3x3 area around the player
+  for (let x = -1; x <= 1; x++) {
+    for (let y = -1; y <= 1; y++) {
+      for (let z = -1; z <= 1; z++) {
+        chunkManager.generateChunk(
+          initialChunkCoords.x + x,
+          initialChunkCoords.y + y,
+          initialChunkCoords.z + z
+        );
+      }
+    }
   }
+  chunkManager.updateStarField();
   
-  updateLoadingProgress(70, 'Forming nebulae...');
+  // Get references from chunk manager
+  galaxies = chunkManager.getGalaxies();
+  nebulae = chunkManager.getNebulae();
+  starField = chunkManager.getStarField();
   
-  // Create nebulae
-  for (let i = 0; i < CONFIG.nebulaCount; i++) {
-    const position = new THREE.Vector3(
-      (Math.random() - 0.5) * CONFIG.universeRadius * 0.6,
-      (Math.random() - 0.5) * CONFIG.universeRadius * 0.3,
-      (Math.random() - 0.5) * CONFIG.universeRadius * 0.6
-    );
-    const nebula = createNebula(position);
-    scene.add(nebula);
-    nebulae.push(nebula);
-  }
+  // Update UI with star count
+  let totalStars = 0;
+  chunkManager.chunks.forEach(chunk => {
+    totalStars += chunk.stars.length;
+  });
+  document.getElementById('star-count').textContent = `~${(totalStars * 10).toLocaleString()}`;
+  
+  updateLoadingProgress(70, 'Universe is infinite...');
   
   updateLoadingProgress(80, 'Applying effects...');
   
@@ -943,13 +1198,49 @@ function setupEventListeners() {
     const density = parseInt(e.target.value);
     document.getElementById('star-density-value').textContent = `${density}K`;
     
-    // Regenerate star field with new density
-    const newCount = density * 1000;
-    scene.remove(starField);
-    starField = createStarField(newCount);
-    scene.add(starField);
-    CONFIG.starCount = newCount;
-    document.getElementById('star-count').textContent = newCount.toLocaleString();
+    // Update stars per chunk in the infinite universe
+    CONFIG.starsPerChunk = density * 2; // Scale proportionally
+    
+    // Regenerate all chunks with new density
+    if (chunkManager) {
+      const playerPos = camera.position.clone();
+      
+      // Clear existing chunks
+      for (const [key, chunk] of chunkManager.chunks) {
+        if (chunk.galaxy) scene.remove(chunk.galaxy);
+        if (chunk.nebula) scene.remove(chunk.nebula);
+      }
+      chunkManager.chunks.clear();
+      chunkManager.galaxies = [];
+      chunkManager.nebulae = [];
+      
+      // Regenerate chunks around player
+      const playerChunk = chunkManager.getChunkCoords(playerPos.x, playerPos.y, playerPos.z);
+      for (let x = -1; x <= 1; x++) {
+        for (let y = -1; y <= 1; y++) {
+          for (let z = -1; z <= 1; z++) {
+            chunkManager.generateChunk(
+              playerChunk.x + x,
+              playerChunk.y + y,
+              playerChunk.z + z
+            );
+          }
+        }
+      }
+      chunkManager.updateStarField();
+      
+      // Update references
+      galaxies = chunkManager.getGalaxies();
+      nebulae = chunkManager.getNebulae();
+      starField = chunkManager.getStarField();
+      
+      // Update UI
+      let totalStars = 0;
+      chunkManager.chunks.forEach(chunk => {
+        totalStars += chunk.stars.length;
+      });
+      document.getElementById('star-count').textContent = `~${(totalStars * 10).toLocaleString()}`;
+    }
   });
   
   document.getElementById('nebula-intensity').addEventListener('input', (e) => {
@@ -1088,9 +1379,20 @@ function animate() {
     }
   }
   
+  // Update infinite universe - generate/remove chunks based on player position
+  if (chunkManager) {
+    chunkManager.update(camera.position);
+    // Get updated references
+    galaxies = chunkManager.getGalaxies();
+    nebulae = chunkManager.getNebulae();
+    starField = chunkManager.getStarField();
+  }
+  
   // Animate nebulae
   nebulae.forEach(nebula => {
-    nebula.material.uniforms.time.value = elapsed * timeMultiplier;
+    if (nebula.material && nebula.material.uniforms) {
+      nebula.material.uniforms.time.value = elapsed * timeMultiplier;
+    }
     nebula.rotation.y += 0.0001 * timeMultiplier;
   });
   
@@ -1098,11 +1400,6 @@ function animate() {
   galaxies.forEach(galaxy => {
     galaxy.rotation.y += 0.0002 * timeMultiplier;
   });
-  
-  // Subtle star field animation
-  if (starField) {
-    starField.rotation.y += 0.00005 * timeMultiplier;
-  }
   
   // FPS counter
   frameCount++;
