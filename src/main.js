@@ -252,6 +252,45 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import * as Tone from 'tone';
 
 // ============================================================================
+// THREE.JS BUFFERGEOMETRY PATCH - Prevent NaN bounding sphere errors
+// ============================================================================
+
+// Override computeBoundingSphere to prevent NaN errors and warnings
+const originalComputeBoundingSphere = THREE.BufferGeometry.prototype.computeBoundingSphere;
+THREE.BufferGeometry.prototype.computeBoundingSphere = function() {
+  // Check if position attribute exists and has valid data
+  const position = this.attributes.position;
+  if (!position) {
+    return;
+  }
+  
+  const array = position.array;
+  const count = position.count;
+  
+  // Check for NaN or invalid values in position data
+  let hasNaN = false;
+  for (let i = 0; i < array.length; i++) {
+    if (!isFinite(array[i]) || isNaN(array[i])) {
+      hasNaN = true;
+      array[i] = 0; // Replace NaN with 0
+    }
+  }
+  
+  if (hasNaN) {
+    // Mark attribute as needing update since we modified it
+    position.needsUpdate = true;
+  }
+  
+  // Call original function
+  originalComputeBoundingSphere.call(this);
+  
+  // Check if result is valid, if not set a default
+  if (!this.boundingSphere || !isFinite(this.boundingSphere.radius) || isNaN(this.boundingSphere.radius)) {
+    this.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 1);
+  }
+};
+
+// ============================================================================
 // CONFIGURATION
 // ============================================================================
 
