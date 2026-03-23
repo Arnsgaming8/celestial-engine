@@ -72,6 +72,17 @@ canvas {
   animation: pulse 2s ease-in-out infinite;
 }
 
+.loader-subtitle,
+.programmer-credit {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.9rem;
+  font-weight: 400;
+  letter-spacing: 0.2em;
+  color: var(--accent);
+  margin-bottom: 1.5rem;
+  opacity: 0.9;
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.8; transform: scale(1.02); }
