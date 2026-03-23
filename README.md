@@ -1,6 +1,6 @@
 # 🌌 The Celestial Engine
 
-![The Celestial Engine](https://img.shields.io/badge/Version-1.0.0-blueviolet)
+![The Celestial Engine](https://img.shields.io/badge/Version-1.2.0-blueviolet)
 ![Three.js](https://img.shields.io/badge/Three.js-r128-orange)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
