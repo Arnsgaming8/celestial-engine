@@ -255,6 +255,17 @@ import * as Tone from 'tone';
 // THREE.JS BUFFERGEOMETRY PATCH - Prevent NaN bounding sphere errors
 // ============================================================================
 
+// Override console.warn to filter out THREE.js NaN bounding sphere warnings
+const originalWarn = console.warn;
+console.warn = function(...args) {
+  // Filter out the specific THREE.js bounding sphere warning
+  const message = args[0];
+  if (typeof message === 'string' && message.includes('THREE.BufferGeometry.computeBoundingSphere()')) {
+    return; // Suppress this warning
+  }
+  originalWarn.apply(console, args);
+};
+
 // Override computeBoundingSphere to prevent NaN errors and warnings
 const originalComputeBoundingSphere = THREE.BufferGeometry.prototype.computeBoundingSphere;
 THREE.BufferGeometry.prototype.computeBoundingSphere = function() {
