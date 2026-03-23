@@ -1663,18 +1663,35 @@ function init() {
   
   updateLoadingProgress(90, 'Initializing audio...');
   
-  // Initialize audio
-  audioEngine = new AudioEngine();
+  // Initialize audio - wrap in try-catch for mobile compatibility
+  // Audio requires user interaction on mobile, so we'll initialize lazily
+  try {
+    audioEngine = new AudioEngine();
+  } catch (e) {
+    console.warn('Audio engine initialization deferred:', e);
+  }
   
   updateLoadingProgress(100, 'Ready!');
   
   // Event listeners
   setupEventListeners();
   
-  // Hide loading screen
+  // Hide loading screen - always hide after a short delay to prevent stuck loading
   setTimeout(() => {
-    document.getElementById('loading-screen').classList.add('hidden');
-  }, 500);
+    const loadingScreen = document.getElementById('loading-screen');
+    if (loadingScreen) {
+      loadingScreen.classList.add('hidden');
+    }
+  }, 800); // Increased timeout for mobile
+  
+  // Failsafe: Force hide loading screen after 10 seconds no matter what
+  setTimeout(() => {
+    const loadingScreen = document.getElementById('loading-screen');
+    if (loadingScreen && !loadingScreen.classList.contains('hidden')) {
+      console.warn('Loading screen stuck - forcing hide');
+      loadingScreen.classList.add('hidden');
+    }
+  }, 10000);
   
   // Start animation
   animate();
