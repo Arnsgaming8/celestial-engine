@@ -316,6 +316,13 @@ const CONFIG = {
   starsPerChunk: MOBILE_CONFIG.isMobile ? 45 : 100,       // Stars per chunk (reduced for mobile: 40-50)
   galaxiesPerChunk: 0.02, // Chance of galaxy per chunk
   nebulaePerChunk: 0.015, // Chance of nebula per chunk
+  // Planet configuration
+  planets: [
+    { type: 'earth', radius: 15, orbitRadius: 800, orbitSpeed: 0.1, rotationSpeed: 0.5, hasRings: false },
+    { type: 'mars', radius: 8, orbitRadius: 1100, orbitSpeed: 0.08, rotationSpeed: 0.48, hasRings: false },
+    { type: 'gas-giant', radius: 35, orbitRadius: 1600, orbitSpeed: 0.04, rotationSpeed: 0.3, hasRings: true },
+    { type: 'ice', radius: 12, orbitRadius: 2100, orbitSpeed: 0.02, rotationSpeed: 0.2, hasRings: false }
+  ],
   colors: {
     primary: 0x4488ff,
     secondary: 0x8844ff,
@@ -671,7 +678,7 @@ class ChunkManager {
 // ============================================================================
 
 let scene, camera, renderer, composer, controls;
-let starField, galaxies = [], nebulae = [];
+let starField, galaxies = [], nebulae = [], planets = [];
 let clock = new THREE.Clock();
 let chunkManager = null;
 let audioEngine = null;
@@ -970,6 +977,46 @@ class AudioEngine {
 // PROCEDURAL GENERATION
 // ============================================================================
 
+// Create all planets from configuration
+function createPlanets() {
+  const planetConfigs = CONFIG.planets || [];
+  
+  planetConfigs.forEach((config, index) => {
+    // Create orbit path visualization
+    const orbitPath = createOrbitPath(config.orbitRadius);
+    scene.add(orbitPath);
+    
+    // Create the planet
+    const planet = createPlanet(config);
+    
+    // Set initial position on orbit
+    const angle = planet.userData.orbitAngle;
+    planet.position.x = Math.cos(angle) * config.orbitRadius;
+    planet.position.z = Math.sin(angle) * config.orbitRadius;
+    planet.position.y = (Math.random() - 0.5) * 50; // Slight vertical offset
+    
+    scene.add(planet);
+    planets.push(planet);
+  });
+  
+  console.log(`Created ${planets.length} planets`);
+}
+
+// Update planet positions (orbit and rotation)
+function updatePlanets(deltaTime) {
+  planets.forEach(planet => {
+    const data = planet.userData;
+    
+    // Update orbital position
+    data.orbitAngle += data.orbitSpeed * deltaTime;
+    planet.position.x = Math.cos(data.orbitAngle) * data.orbitRadius;
+    planet.position.z = Math.sin(data.orbitAngle) * data.orbitRadius;
+    
+    // Update axial rotation
+    planet.rotation.y += data.rotationSpeed * deltaTime;
+  });
+}
+
 // Create ambient stars - distant background stars for realistic space look
 function createAmbientStars() {
   const count = 2000; // Background stars
@@ -1243,6 +1290,233 @@ function createGalaxy(type = 'spiral', position = new THREE.Vector3()) {
     });
     return new THREE.Points(fallbackGeometry, fallbackMaterial);
   }
+}
+
+// Planet color palettes by type
+const PLANET_COLORS = {
+  'earth': {
+    base: 0x2244aa,
+    baseHex: '#2244aa',
+    surface: ['#2255cc', '#44aa66', '#66cc44', '#3388dd'], // blues, greens
+    atmosphere: 0x4488ff,
+    cloud: 0xffffff
+  },
+  'mars': {
+    base: 0xcc4422,
+    baseHex: '#cc4422',
+    surface: ['#dd5522', '#cc4422', '#aa3311', '#ee6633'], // red/orange
+    atmosphere: 0xff6644,
+    cloud: 0xdd8855
+  },
+  'gas-giant': {
+    base: 0xddcc88,
+    baseHex: '#ddcc88',
+    surface: ['#ddbb77', '#ccaa66', '#eecc99', '#bbaa55', '#ffddaa'], // banded
+    atmosphere: 0xffeedd,
+    cloud: 0xffffff
+  },
+  'ice': {
+    base: 0xaaddff,
+    baseHex: '#aaddff',
+    surface: ['#cceeff', '#99ccff', '#ddeeff', '#bbeeff'], // pale blue/white
+    atmosphere: 0xccddff,
+    cloud: 0xffffff
+  },
+  'rocky': {
+    base: 0x887766,
+    baseHex: '#887766',
+    surface: ['#998877', '#776655', '#aa9988', '#665544'], // gray/brown
+    atmosphere: null,
+    cloud: null
+  }
+};
+
+// Generate procedural planet texture using offscreen canvas
+function generatePlanetTexture(type, size) {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  
+  // Use smaller canvas for performance, scale up
+  const canvasSize = Math.min(256, Math.floor(size / 2));
+  canvas.width = canvasSize;
+  canvas.height = canvasSize;
+  
+  const colors = PLANET_COLORS[type] || PLANET_COLORS['rocky'];
+  const centerX = canvasSize / 2;
+  const centerY = canvasSize / 2;
+  const radius = canvasSize / 2 - 2;
+  
+  // Create gradient for sphere shading
+  const gradient = ctx.createRadialGradient(
+    centerX - radius * 0.3, centerY - radius * 0.3, radius * 0.1,
+    centerX, centerY, radius
+  );
+  gradient.addColorStop(0, '#ffffff');
+  gradient.addColorStop(0.4, colors.baseHex || '#888888');
+  gradient.addColorStop(1, '#111122');
+  
+  // Fill with base gradient
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvasSize, canvasSize);
+  
+  // Add procedural surface details using noise-like patterns
+  if (type === 'gas-giant') {
+    // Horizontal bands
+    for (let i = 0; i < 8; i++) {
+      const y = (i / 8) * canvasSize + Math.sin(i) * 10;
+      ctx.fillStyle = colors.surface[i % colors.surface.length];
+      ctx.globalAlpha = 0.3 + Math.random() * 0.3;
+      ctx.fillRect(0, y - 8, canvasSize, 16 + Math.random() * 20);
+    }
+  } else {
+    // Random surface patches for rocky/terrestrial planets
+    for (let i = 0; i < 30; i++) {
+      const x = Math.random() * canvasSize;
+      const y = Math.random() * canvasSize;
+      const patchRadius = Math.random() * 30 + 10;
+      const dist = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+      
+      if (dist + patchRadius < radius) {
+        ctx.beginPath();
+        ctx.arc(x, y, patchRadius, 0, Math.PI * 2);
+        ctx.fillStyle = colors.surface[Math.floor(Math.random() * colors.surface.length)];
+        ctx.globalAlpha = 0.2 + Math.random() * 0.4;
+        ctx.fill();
+      }
+    }
+  }
+  
+  // Add clouds for Earth-like planets
+  if (colors.cloud && (type === 'earth' || type === 'ice')) {
+    ctx.globalAlpha = 0.4;
+    for (let i = 0; i < 15; i++) {
+      const x = Math.random() * canvasSize;
+      const y = Math.random() * canvasSize;
+      const cloudRadius = Math.random() * 20 + 10;
+      const dist = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+      
+      if (dist + cloudRadius < radius * 0.9) {
+        ctx.beginPath();
+        ctx.arc(x, y, cloudRadius, 0, Math.PI * 2);
+        ctx.fillStyle = colors.cloud;
+        ctx.fill();
+      }
+    }
+  }
+  
+  ctx.globalAlpha = 1;
+  
+  // Create circular mask
+  ctx.globalCompositeOperation = 'destination-in';
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+  ctx.fill();
+  
+  return canvas;
+}
+
+// Create a planet mesh with shading and optional rings
+function createPlanet(config) {
+  const { type, radius, orbitRadius, orbitSpeed, rotationSpeed, hasRings, tilt = 0.2 } = config;
+  
+  // Create planet sphere
+  const geometry = new THREE.SphereGeometry(radius, 32, 32);
+  
+  // Generate texture
+  const texture = new THREE.CanvasTexture(generatePlanetTexture(type, radius));
+  
+  // Create material with lighting
+  const material = new THREE.MeshStandardMaterial({
+    map: texture,
+    roughness: 0.8,
+    metalness: 0.1
+  });
+  
+  const planet = new THREE.Mesh(geometry, material);
+  
+  // Add atmosphere glow for non-rocky planets
+  if (type !== 'rocky' && PLANET_COLORS[type]?.atmosphere) {
+    const atmoGeometry = new THREE.SphereGeometry(radius * 1.05, 32, 32);
+    const atmoMaterial = new THREE.MeshBasicMaterial({
+      color: PLANET_COLORS[type].atmosphere,
+      transparent: true,
+      opacity: 0.15,
+      side: THREE.BackSide
+    });
+    const atmosphere = new THREE.Mesh(atmoGeometry, atmoMaterial);
+    planet.add(atmosphere);
+  }
+  
+  // Add rings for gas giants or if specified
+  if (hasRings || type === 'gas-giant') {
+    const ringGeometry = new THREE.RingGeometry(radius * 1.3, radius * 2.2, 64);
+    const ringTexture = generateRingTexture();
+    const ringMaterial = new THREE.MeshBasicMaterial({
+      map: ringTexture,
+      transparent: true,
+      opacity: 0.7,
+      side: THREE.DoubleSide
+    });
+    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+    ring.rotation.x = Math.PI / 2 + tilt;
+    planet.add(ring);
+  }
+  
+  // Store orbital data
+  planet.userData = {
+    orbitRadius,
+    orbitSpeed,
+    rotationSpeed,
+    orbitAngle: Math.random() * Math.PI * 2,
+    type
+  };
+  
+  return planet;
+}
+
+// Generate ring texture with gradient fade
+function generateRingTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  
+  // Radial gradient for ring fade
+  const gradient = ctx.createRadialGradient(64, 64, 30, 64, 64, 60);
+  gradient.addColorStop(0, 'rgba(255,255,255,0)');
+  gradient.addColorStop(0.3, 'rgba(220,200,180,0.8)');
+  gradient.addColorStop(0.5, 'rgba(200,180,160,0.6)');
+  gradient.addColorStop(0.7, 'rgba(180,160,140,0.3)');
+  gradient.addColorStop(1, 'rgba(255,255,255,0)');
+  
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 128, 128);
+  
+  return new THREE.CanvasTexture(canvas);
+}
+
+// Create orbital path visualization
+function createOrbitPath(radius) {
+  const points = [];
+  const segments = 64;
+  
+  for (let i = 0; i <= segments; i++) {
+    const angle = (i / segments) * Math.PI * 2;
+    points.push(new THREE.Vector3(
+      Math.cos(angle) * radius,
+      0,
+      Math.sin(angle) * radius
+    ));
+  }
+  
+  const geometry = new THREE.BufferGeometry().setFromPoints(points);
+  const material = new THREE.LineBasicMaterial({
+    color: 0x333355,
+    transparent: true,
+    opacity: 0.3
+  });
+  
+  return new THREE.Line(geometry, material);
 }
 
 function createNebula(position = new THREE.Vector3()) {
@@ -1544,8 +1818,21 @@ function init() {
   const fogDensity = MOBILE_CONFIG.isMobile ? 0.0003 : 0.0002;
   scene.fog = new THREE.FogExp2(0x000000, fogDensity);
   
+  // Add lighting for planets - sun at center
+  const sunLight = new THREE.PointLight(0xffffee, 2, 5000);
+  sunLight.position.set(0, 0, 0);
+  scene.add(sunLight);
+  
+  // Subtle ambient light
+  const ambientLight = new THREE.AmbientLight(0x222233, 0.3);
+  scene.add(ambientLight);
+  
   // Add ambient starfield background (distant stars that don't move with chunks)
   createAmbientStars();
+  
+  // Create planets from config
+  updateLoadingProgress(45, 'Creating planets...');
+  createPlanets();
   
   updateLoadingProgress(20, 'Initializing camera...');
   
@@ -2048,6 +2335,11 @@ function animate() {
     }
     nebula.rotation.y += 0.0001 * timeMultiplier;
   });
+  
+  // Update planets (orbit and rotation)
+  if (planets.length > 0) {
+    updatePlanets(delta);
+  }
   
   // Rotate galaxies slowly
   galaxies.forEach(galaxy => {
