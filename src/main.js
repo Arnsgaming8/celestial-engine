@@ -317,13 +317,15 @@ const CONFIG = {
   galaxiesPerChunk: 0.02, // Chance of galaxy per chunk
   nebulaePerChunk: 0.015, // Chance of nebula per chunk
   colors: {
-    primary: 0x00d4ff,
-    secondary: 0xff00aa,
+    primary: 0x4488ff,
+    secondary: 0x8844ff,
     accent: 0xffaa00,
     starColors: [
-      0xffffff, 0xfff4e8, 0xffe4c4, 0xffd700,
-      0xffa500, 0xff6b6b, 0x87ceeb, 0xadd8e6,
-      0x0000ff, 0xff00ff, 0x00ffff
+      // Realistic star colors - mostly white/blue with some warm giants
+      0xffffff, 0xffffff, 0xffffff, // White stars
+      0xe8f4ff, 0xd4e8ff, 0xc8dbff, // Blue-white
+      0xfff4e8, 0xffe4c4, 0xffd700, // Yellow (like our sun)
+      0xffa500, 0xff8844, 0xff6666  // Red/orange giants
     ]
   }
 };
@@ -968,6 +970,66 @@ class AudioEngine {
 // PROCEDURAL GENERATION
 // ============================================================================
 
+// Create ambient stars - distant background stars for realistic space look
+function createAmbientStars() {
+  const count = 2000; // Background stars
+  const positions = new Float32Array(count * 3);
+  const colors = new Float32Array(count * 3);
+  const sizes = new Float32Array(count);
+  
+  for (let i = 0; i < count; i++) {
+    // Place stars far away in a large sphere
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    const r = 3000 + Math.random() * 2000; // Very far away
+    
+    positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+    positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+    positions[i * 3 + 2] = r * Math.cos(phi);
+    
+    // Mostly white/blue stars for background
+    const colorChoice = Math.random();
+    if (colorChoice < 0.7) {
+      // White
+      colors[i * 3] = 1;
+      colors[i * 3 + 1] = 1;
+      colors[i * 3 + 2] = 1;
+    } else if (colorChoice < 0.9) {
+      // Blue-white
+      colors[i * 3] = 0.9;
+      colors[i * 3 + 1] = 0.95;
+      colors[i * 3 + 2] = 1;
+    } else {
+      // Slight yellow
+      colors[i * 3] = 1;
+      colors[i * 3 + 1] = 0.95;
+      colors[i * 3 + 2] = 0.9;
+    }
+    
+    // Small sizes for distant stars
+    sizes[i] = 0.5 + Math.random() * 1;
+  }
+  
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute('customColor', new THREE.BufferAttribute(colors, 3));
+  geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+  
+  const material = new THREE.ShaderMaterial({
+    uniforms: {},
+    vertexShader: starVertexShader,
+    fragmentShader: starFragmentShader,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+  
+  const ambientStars = new THREE.Points(geometry, material);
+  scene.add(ambientStars);
+  
+  return ambientStars;
+}
+
 function createStarField(count) {
   const positions = new Float32Array(count * 3);
   const colors = new Float32Array(count * 3);
@@ -1475,11 +1537,15 @@ function init() {
   
   // Scene setup
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x000011);
+  // Pure black background for realistic space
+  scene.background = new THREE.Color(0x000000);
   // Enhanced fog for infinite universe - hides chunk boundaries seamlessly
   // Use heavier fog on mobile to reduce draw distance appearance
-  const fogDensity = MOBILE_CONFIG.isMobile ? 0.00025 : 0.00015;
-  scene.fog = new THREE.FogExp2(0x000011, fogDensity);
+  const fogDensity = MOBILE_CONFIG.isMobile ? 0.0003 : 0.0002;
+  scene.fog = new THREE.FogExp2(0x000000, fogDensity);
+  
+  // Add ambient starfield background (distant stars that don't move with chunks)
+  createAmbientStars();
   
   updateLoadingProgress(20, 'Initializing camera...');
   
