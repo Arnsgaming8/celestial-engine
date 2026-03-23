@@ -30,6 +30,21 @@ Welcome to **The Celestial Engine** — a breathtaking procedural universe simul
 - **Planetary nebulae** — Beautiful shells of ionized gas expelled by dying stars
 - **Volumetric rendering** — Layered particle systems create depth and atmosphere
 
+### 🪐 Planets
+- **Multiple planet types** — Earth-like, Mars-like, Gas Giants, Ice Worlds, Rocky planets
+- **Realistic color palettes** — Procedural surface colors based on planet type
+- **Atmospheric glow** — Soft radial gradient atmosphere around suitable planets
+- **Light source shading** — One side lit by central sun, shadow on other side
+- **Procedural textures** — Canvas-generated surface details (no external textures needed)
+- **Cloud layers** — Semi-transparent clouds on Earth-like and Ice planets
+- **Gas giant bands** — Horizontal turbulence bands on Jupiter-style planets
+- **Planetary rings** — Thin, semi-transparent ring system with gradient fade
+- **Orbital motion** — Planets orbit around central point at adjustable speeds
+- **Axial rotation** — Planets rotate on their axis
+- **Visible orbit paths** — Faint orbital path visualization
+- **Depth sorting** — Planets properly pass behind nebula layers
+- **Parallax effect** — Larger planets appear closer, smaller ones farther away
+
 ### 🎵 Audio Experience
 - **Dynamic ambient soundscape** — Evolving cosmic audio that responds to your position and speed
 - **Procedural synthesizer** — Web Audio API-driven drone tones and ethereal pads
@@ -259,7 +274,7 @@ The built files in `dist/` can be deployed to any static hosting service:
 ## 🎭 Credits
 
 ### 🌟 Created By
-- **Your Name** — Lead Developer & Visionary
+- **Arnav Jugessur** — Lead Developer & Visionary
 
 ### 🙏 Acknowledgments
 - [Three.js Community](https://threejs.org/) — The engine that powers the cosmos
